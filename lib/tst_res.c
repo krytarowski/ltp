@@ -66,6 +66,7 @@
 
 #include <pthread.h>
 #include <assert.h>
+#include <err.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,7 +109,32 @@ struct usc_errno_t TEST_VALID_ENO[USC_MAX_ERRNO];
 	assert(strlen(buf) > 0);		\
 } while (0)
 
-static pthread_mutex_t tmutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+/*
+ * PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP is Linux specific
+ * Use portable pthread_mutexattr_t(3) with PTHREAD_MUTEX_RECURSIVE
+ */
+static pthread_mutex_t tmutex;
+
+static inline initialize_tmutex(void)
+{
+	static pthread_mutexattr_t tmutex_attr;
+	static tmutex_initialized = 0;
+
+	if (tmutex_initialized != 0)
+		return;
+
+	tmutex_initialized = 1;
+
+	if (pthread_mutexattr_init(&tmutexattr) != 0) {
+		err(EXIT_FAILURE, "Couldn't initialize tmutexattr");
+	}
+	if (pthread_mutexattr_settype(&tmutexattr, PTHREAD_MUTEX_RECURSIVE) != 0) {
+		err(EXIT_FAILURE, "Couldn't set the mutex type to PTHREAD_MUTEX_RECURSIVE");
+	}
+	if (pthread_mutex_init(&tmutex, &tmutexattr) != 0) {
+		err(EXIT_FAILURE, "Couldn't initialize tmutex");
+	}
+}
 
 /*
  * Define local function prototypes.
@@ -202,6 +228,7 @@ const char *strttype(int ttype)
 void tst_res_(const char *file, const int lineno, int ttype,
 	const char *fname, const char *arg_fmt, ...)
 {
+	initialize_tmutex();
 	pthread_mutex_lock(&tmutex);
 
 	char tmesg[USERMESG];
@@ -333,6 +360,7 @@ static void tst_condense(int tnum, int ttype, const char *tmesg)
  */
 void tst_flush(void)
 {
+	initialize_tmutex();
 	pthread_mutex_lock(&tmutex);
 
 #if DEBUG
@@ -514,6 +542,7 @@ static void check_env(void)
  */
 void tst_exit(void)
 {
+	initialize_tmutex();
 	pthread_mutex_lock(&tmutex);
 
 #if DEBUG
@@ -585,6 +614,7 @@ pid_t tst_vfork(void)
  */
 int tst_environ(void)
 {
+	initialize_tmutex();
 	pthread_mutex_lock(&tmutex);
 	int ret = 0;
 	if ((T_out = fdopen(dup(fileno(stdout)), "w")) == NULL)
@@ -607,6 +637,7 @@ static int tst_brk_entered = 0;
 void tst_brk_(const char *file, const int lineno, int ttype, const char *fname,
 	void (*func)(void), const char *arg_fmt, ...)
 {
+	initialize_tmutex();
 	pthread_mutex_lock(&tmutex);
 
 	char tmesg[USERMESG];
@@ -685,6 +716,7 @@ void tst_resm_(const char *file, const int lineno, int ttype,
 void tst_resm_hexd_(const char *file, const int lineno, int ttype,
 	const void *buf, size_t size, const char *arg_fmt, ...)
 {
+	initialize_tmutex();
 	pthread_mutex_lock(&tmutex);
 
 	char tmesg[USERMESG];
